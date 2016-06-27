@@ -1,0 +1,59 @@
+#!/usr/bin/env python
+import json
+import os
+import re
+import shutil
+import urllib2
+
+
+link_r = re.compile(
+    '<button class="bt" onclick="window\\.location\\.href=\'(\\d+)\\.html\'">'
+    '<p>(.+)</p>'
+    '</button>')
+
+
+def get_directory_url(page):
+    return 'http://www.nichtlustig.de/ajax/cartoon.php?NLaction=thumbSlide&page=%d' % page
+
+
+def get_image_url(date):
+    return 'http://static.nichtlustig.de/comics/full/%s.jpg' % date
+
+
+def get_image_path(date, title):
+    return '%s - %s.jpg' % (date, title)
+
+
+def parse_directory(fp):
+    html = json.load(fp)['html']
+    for m in re.finditer(link_r, html):
+        date, title = m.group(1), m.group(2)
+        title = title.replace('/', '-')
+        yield date, title
+
+
+def get_all_paths():
+    page = 0
+    proceed = True
+    while proceed:
+        proceed = False
+        fp = urllib2.urlopen(get_directory_url(page))
+        try:
+            for item in parse_directory(fp):
+                yield item
+                proceed = True
+        finally:
+            fp.close()
+        page += 1
+
+
+for date, title in get_all_paths():
+    path = get_image_path(date, title)
+    if os.path.exists(path):
+        continue
+    part_path = '%s.part' % path
+    url = get_image_url(date)
+    print '%s <- %s ...' % (path, url)
+    with open(part_path, 'w') as fp:
+        shutil.copyfileobj(urllib2.urlopen(url), fp)
+    os.rename(part_path, path)
